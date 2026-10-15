@@ -42,6 +42,8 @@ public class ClusterDataChangedEventPayload implements Serializable {
      */
     private String source;
 
+    private String namespaceId;
+
     public ClusterDataChangedEventPayload() {
     }
 
@@ -53,9 +55,22 @@ public class ClusterDataChangedEventPayload implements Serializable {
      * @param source    the JSON serialized source list
      */
     public ClusterDataChangedEventPayload(final String groupKey, final String eventType, final String source) {
+        this(groupKey, eventType, source, null);
+    }
+
+    /**
+     * Instantiates a new cluster data changed event payload.
+     *
+     * @param groupKey    the config group key name
+     * @param eventType   the event type name
+     * @param source      the JSON serialized source list
+     * @param namespaceId the namespace id
+     */
+    public ClusterDataChangedEventPayload(final String groupKey, final String eventType, final String source, final String namespaceId) {
         this.groupKey = groupKey;
         this.eventType = eventType;
         this.source = source;
+        this.namespaceId = namespaceId;
     }
 
     /**
@@ -110,5 +125,23 @@ public class ClusterDataChangedEventPayload implements Serializable {
      */
     public void setSource(final String source) {
         this.source = source;
+    }
+
+    /**
+     * Gets the namespace id.
+     *
+     * @return the namespace id, or null for legacy payloads
+     */
+    public String getNamespaceId() {
+        return namespaceId;
+    }
+
+    /**
+     * Sets the namespace id.
+     *
+     * @param namespaceId the namespace id
+     */
+    public void setNamespaceId(final String namespaceId) {
+        this.namespaceId = namespaceId;
     }
 }

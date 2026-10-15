@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -66,6 +67,14 @@ public abstract class AbstractNodeDataChangedListener implements DataChangedList
     }
 
     @Override
+    public void onAppAuthChanged(final List<AppAuthData> changed, final DataEventTypeEnum eventType, final String namespaceId) {
+        if (handleEmptyNamespaceRefresh(changed, eventType, namespaceId, changeData.getAuthDataId())) {
+            return;
+        }
+        onAppAuthChanged(changed, eventType);
+    }
+
+    @Override
     public void onAppAuthChanged(final List<AppAuthData> changed, final DataEventTypeEnum eventType) {
         if (CollectionUtils.isEmpty(changed)) {
             return;
@@ -77,6 +86,14 @@ public abstract class AbstractNodeDataChangedListener implements DataChangedList
     }
 
     @Override
+    public void onPluginChanged(final List<PluginData> changed, final DataEventTypeEnum eventType, final String namespaceId) {
+        if (handleEmptyNamespaceRefresh(changed, eventType, namespaceId, changeData.getPluginDataId())) {
+            return;
+        }
+        onPluginChanged(changed, eventType);
+    }
+
+    @Override
     public void onPluginChanged(final List<PluginData> changed, final DataEventTypeEnum eventType) {
         if (CollectionUtils.isEmpty(changed)) {
             return;
@@ -85,6 +102,36 @@ public abstract class AbstractNodeDataChangedListener implements DataChangedList
         final String configKeyPrefix = namespaceId + DefaultNodeConstants.JOIN_POINT + changeData.getPluginDataId() + DefaultNodeConstants.JOIN_POINT;
         this.onCommonChanged(configKeyPrefix, changed, eventType, PluginData::getName, PluginData.class);
         LOG.debug("[DataChangedListener] PluginChanged {}", configKeyPrefix);
+    }
+
+    private boolean handleEmptyNamespaceRefresh(final List<?> changed, final DataEventTypeEnum eventType,
+                                                final String namespaceId, final String dataId) {
+        if (!CollectionUtils.isEmpty(changed) || eventType != DataEventTypeEnum.REFRESH) {
+            return false;
+        }
+        if (StringUtils.isBlank(namespaceId)) {
+            LOG.warn("[DataChangedListener] ignore empty refresh without namespace for {}", dataId);
+            return true;
+        }
+        refreshEmptyCommon(namespaceId + DefaultNodeConstants.JOIN_POINT + dataId + DefaultNodeConstants.JOIN_POINT);
+        return true;
+    }
+
+    private void refreshEmptyCommon(final String configKeyPrefix) {
+        final ReentrantLock reentrantLock = listSaveLockMap.computeIfAbsent(configKeyPrefix, key -> new ReentrantLock());
+        reentrantLock.lock();
+        try {
+            readConfigNames(configKeyPrefix + DefaultNodeConstants.LIST_STR)
+                    .forEach(name -> delConfig(configKeyPrefix + name));
+            publishConfig(configKeyPrefix + DefaultNodeConstants.LIST_STR, Collections.emptyList());
+        } finally {
+            reentrantLock.unlock();
+        }
+    }
+
+    private List<String> readConfigNames(final String listKey) {
+        return GsonUtils.getInstance().fromList(
+                Optional.ofNullable(getConfig(listKey)).orElse(DefaultNodeConstants.EMPTY_ARRAY_STR), String.class);
     }
 
     @Override
@@ -181,6 +228,41 @@ public abstract class AbstractNodeDataChangedListener implements DataChangedList
     }
 
     @Override
+    public void onSelectorChanged(final List<SelectorData> changed, final DataEventTypeEnum eventType, final String namespaceId) {
+        if (!isEmptyNamespaceRefresh(changed, eventType)) {
+            onSelectorChanged(changed, eventType);
+            return;
+        }
+        if (StringUtils.isBlank(namespaceId)) {
+            LOG.warn("[DataChangedListener] ignore empty selector refresh without namespace");
+            return;
+        }
+        refreshEmptySelectors(namespaceId);
+    }
+
+    private boolean isEmptyNamespaceRefresh(final List<?> changed, final DataEventTypeEnum eventType) {
+        return CollectionUtils.isEmpty(changed) && eventType == DataEventTypeEnum.REFRESH;
+    }
+
+    private void refreshEmptySelectors(final String namespaceId) {
+        final String configKeyPrefix = namespaceId + DefaultNodeConstants.JOIN_POINT
+                + changeData.getSelectorDataId() + DefaultNodeConstants.JOIN_POINT;
+        final ReentrantLock reentrantLock = listSaveLockMap.computeIfAbsent(configKeyPrefix, key -> new ReentrantLock());
+        reentrantLock.lock();
+        try {
+            readConfigNames(namespaceId + DefaultNodeConstants.JOIN_POINT + changeData.getPluginDataId()
+                    + DefaultNodeConstants.JOIN_POINT + DefaultNodeConstants.LIST_STR).forEach(pluginName -> {
+                        final String pluginPrefix = configKeyPrefix + pluginName + DefaultNodeConstants.JOIN_POINT;
+                        readConfigNames(pluginPrefix + DefaultNodeConstants.LIST_STR)
+                                .forEach(selectorId -> delConfig(pluginPrefix + selectorId));
+                        delConfig(pluginPrefix + DefaultNodeConstants.LIST_STR);
+                    });
+        } finally {
+            reentrantLock.unlock();
+        }
+    }
+
+    @Override
     public void onRuleChanged(final List<RuleData> changed, final DataEventTypeEnum eventType) {
         if (CollectionUtils.isEmpty(changed)) {
             return;
@@ -192,6 +274,44 @@ public abstract class AbstractNodeDataChangedListener implements DataChangedList
                 ruleData -> String.join(DefaultNodeConstants.JOIN_POINT, ruleData.getPluginName(), ruleData.getSelectorId()),
                 RuleData::getId);
         LOG.debug("[DataChangedListener] RuleChanged {}", changeData.getRuleDataId());
+    }
+
+    @Override
+    public void onRuleChanged(final List<RuleData> changed, final DataEventTypeEnum eventType, final String namespaceId) {
+        if (!isEmptyNamespaceRefresh(changed, eventType)) {
+            onRuleChanged(changed, eventType);
+            return;
+        }
+        if (StringUtils.isBlank(namespaceId)) {
+            LOG.warn("[DataChangedListener] ignore empty rule refresh without namespace");
+            return;
+        }
+        refreshEmptyRules(namespaceId);
+    }
+
+    private void refreshEmptyRules(final String namespaceId) {
+        final String configKeyPrefix = namespaceId + DefaultNodeConstants.JOIN_POINT
+                + changeData.getRuleDataId() + DefaultNodeConstants.JOIN_POINT;
+        final ReentrantLock reentrantLock = listSaveLockMap.computeIfAbsent(configKeyPrefix, key -> new ReentrantLock());
+        reentrantLock.lock();
+        try {
+            final String pluginListKey = namespaceId + DefaultNodeConstants.JOIN_POINT
+                    + changeData.getPluginDataId() + DefaultNodeConstants.JOIN_POINT + DefaultNodeConstants.LIST_STR;
+            readConfigNames(pluginListKey).forEach(pluginName -> {
+                final String selectorPrefix = namespaceId + DefaultNodeConstants.JOIN_POINT
+                        + changeData.getSelectorDataId() + DefaultNodeConstants.JOIN_POINT + pluginName
+                        + DefaultNodeConstants.JOIN_POINT;
+                readConfigNames(selectorPrefix + DefaultNodeConstants.LIST_STR).forEach(selectorId -> {
+                    final String rulePrefix = configKeyPrefix + pluginName + DefaultNodeConstants.JOIN_POINT + selectorId
+                            + DefaultNodeConstants.JOIN_POINT;
+                    readConfigNames(rulePrefix + DefaultNodeConstants.LIST_STR)
+                            .forEach(ruleId -> delConfig(rulePrefix + ruleId));
+                    delConfig(rulePrefix + DefaultNodeConstants.LIST_STR);
+                });
+            });
+        } finally {
+            reentrantLock.unlock();
+        }
     }
 
     /**

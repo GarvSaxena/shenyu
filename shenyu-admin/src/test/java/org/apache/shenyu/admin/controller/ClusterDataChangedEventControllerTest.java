@@ -17,6 +17,7 @@
 
 package org.apache.shenyu.admin.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.shenyu.admin.listener.DataChangedEvent;
 import org.apache.shenyu.admin.mode.cluster.service.ClusterSelectMasterService;
 import org.apache.shenyu.admin.model.dto.ClusterDataChangedEventPayload;
@@ -41,6 +42,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -87,6 +89,36 @@ public final class ClusterDataChangedEventControllerTest {
         assertEquals(ConfigGroupEnum.PLUGIN, captor.getValue().getGroupKey());
         assertEquals(1, captor.getValue().getSource().size());
         assertInstanceOf(PluginData.class, captor.getValue().getSource().get(0));
+    }
+
+    @Test
+    public void receiveEmptyNamespaceRefreshPreservesNamespaceTest() {
+        when(clusterSelectMasterService.isMaster()).thenReturn(true);
+        ClusterDataChangedEventPayload payload = new ClusterDataChangedEventPayload(
+                ConfigGroupEnum.RULE.name(), DataEventTypeEnum.REFRESH.name(), "[]", "namespace-a");
+
+        ResponseEntity<?> response = controller.receive(payload);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        ArgumentCaptor<DataChangedEvent> captor = ArgumentCaptor.forClass(DataChangedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertEquals(Collections.emptyList(), captor.getValue().getSource());
+        assertEquals("namespace-a", captor.getValue().getNamespaceId());
+    }
+
+    @Test
+    public void receiveLegacyPayloadWithoutNamespacePreservesCompatibilityTest() throws Exception {
+        when(clusterSelectMasterService.isMaster()).thenReturn(true);
+        String legacyPayload = "{\"groupKey\":\"PLUGIN\",\"eventType\":\"REFRESH\",\"source\":\"[]\"}";
+        ClusterDataChangedEventPayload payload =
+                new ObjectMapper().readValue(legacyPayload, ClusterDataChangedEventPayload.class);
+
+        ResponseEntity<?> response = controller.receive(payload);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        ArgumentCaptor<DataChangedEvent> captor = ArgumentCaptor.forClass(DataChangedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertNull(captor.getValue().getNamespaceId());
     }
 
     /**

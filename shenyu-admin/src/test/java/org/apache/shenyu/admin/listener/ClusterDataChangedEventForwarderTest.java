@@ -121,6 +121,25 @@ public final class ClusterDataChangedEventForwarderTest {
         assertTrue(captor.getValue().getBody().getSource().startsWith("["));
     }
 
+    @Test
+    public void forwardEmptyNamespaceRefreshPreservesNamespaceTest() {
+        ClusterMasterDTO master = new ClusterMasterDTO();
+        master.setMasterHost("10.0.0.2");
+        master.setMasterPort("9095");
+        when(clusterSelectMasterService.getMaster()).thenReturn(master);
+        when(restTemplate.postForEntity(any(String.class), any(Object.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("ok"));
+        DataChangedEvent event = new DataChangedEvent(ConfigGroupEnum.RULE, DataEventTypeEnum.REFRESH,
+                Collections.emptyList(), "namespace-a");
+
+        assertTrue(forwarder.forward(event));
+
+        ArgumentCaptor<HttpEntity<ClusterDataChangedEventPayload>> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForEntity(any(String.class), captor.capture(), eq(String.class));
+        assertEquals("namespace-a", captor.getValue().getBody().getNamespaceId());
+        assertEquals("[]", captor.getValue().getBody().getSource());
+    }
+
     /**
      * Forward without a master available returns false without posting.
      */

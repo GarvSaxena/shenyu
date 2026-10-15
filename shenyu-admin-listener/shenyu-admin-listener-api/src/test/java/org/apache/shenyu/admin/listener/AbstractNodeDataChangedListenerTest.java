@@ -33,8 +33,10 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.apache.shenyu.common.constant.Constants.SYS_DEFAULT_NAMESPACE_ID;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class AbstractNodeDataChangedListenerTest {
@@ -70,6 +72,129 @@ public final class AbstractNodeDataChangedListenerTest {
         assertNull(listener.config(selectorDataKey(SECOND_PLUGIN, STALE_ID)));
         assertTrue(listener.wasDeleted(selectorDataKey(FIRST_PLUGIN, STALE_ID)));
         assertTrue(listener.wasDeleted(selectorDataKey(SECOND_PLUGIN, STALE_ID)));
+    }
+
+    @Test
+    public void testNamespaceEmptySelectorRefreshRemovesStaleData() {
+        TestNodeDataChangedListener listener = new TestNodeDataChangedListener();
+        String namespaceAListKey = "namespace-a.selector." + FIRST_PLUGIN + DefaultNodeConstants.POINT_LIST;
+        String namespaceADataKey = "namespace-a.selector." + FIRST_PLUGIN + DefaultNodeConstants.JOIN_POINT + STALE_ID;
+        String namespaceBListKey = "namespace-b.selector." + FIRST_PLUGIN + DefaultNodeConstants.POINT_LIST;
+        String namespaceBDataKey = "namespace-b.selector." + FIRST_PLUGIN + DefaultNodeConstants.JOIN_POINT + STALE_ID;
+        listener.putConfig("namespace-a.plugin.list", Collections.singletonList(FIRST_PLUGIN));
+        listener.putConfig("namespace-b.plugin.list", Collections.singletonList(FIRST_PLUGIN));
+        listener.putConfig(namespaceAListKey, Collections.singletonList(STALE_ID));
+        listener.putConfig(namespaceADataKey, selectorData("namespace-a", FIRST_PLUGIN, STALE_ID));
+        listener.putConfig(namespaceBListKey, Collections.singletonList(STALE_ID));
+        listener.putConfig(namespaceBDataKey, selectorData("namespace-b", FIRST_PLUGIN, STALE_ID));
+
+        listener.onSelectorChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a");
+
+        assertAll(
+                () -> assertNull(listener.config(namespaceAListKey)),
+                () -> assertNull(listener.config(namespaceADataKey)),
+                () -> assertEquals(Collections.singletonList(STALE_ID), listener.config(namespaceBListKey)),
+                () -> assertEquals(selectorData("namespace-b", FIRST_PLUGIN, STALE_ID), listener.config(namespaceBDataKey)));
+    }
+
+    @Test
+    public void testNamespaceEmptyRuleRefreshRemovesStaleData() {
+        TestNodeDataChangedListener listener = new TestNodeDataChangedListener();
+        String namespaceAListKey = "namespace-a.rule." + FIRST_PLUGIN + ".selector-id" + DefaultNodeConstants.POINT_LIST;
+        String namespaceADataKey = "namespace-a.rule." + FIRST_PLUGIN + ".selector-id.stale";
+        String namespaceBListKey = "namespace-b.rule." + FIRST_PLUGIN + ".selector-id" + DefaultNodeConstants.POINT_LIST;
+        String namespaceBDataKey = "namespace-b.rule." + FIRST_PLUGIN + ".selector-id.stale";
+        listener.putConfig("namespace-a.plugin.list", Collections.singletonList(FIRST_PLUGIN));
+        listener.putConfig("namespace-b.plugin.list", Collections.singletonList(FIRST_PLUGIN));
+        listener.putConfig("namespace-a.selector." + FIRST_PLUGIN + DefaultNodeConstants.POINT_LIST,
+                Collections.singletonList("selector-id"));
+        listener.putConfig("namespace-b.selector." + FIRST_PLUGIN + DefaultNodeConstants.POINT_LIST,
+                Collections.singletonList("selector-id"));
+        listener.putConfig(namespaceAListKey, Collections.singletonList(STALE_ID));
+        listener.putConfig(namespaceADataKey, "stale-rule");
+        listener.putConfig(namespaceBListKey, Collections.singletonList(STALE_ID));
+        listener.putConfig(namespaceBDataKey, "stale-rule");
+
+        listener.onRuleChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a");
+
+        assertAll(
+                () -> assertNull(listener.config(namespaceAListKey)),
+                () -> assertNull(listener.config(namespaceADataKey)),
+                () -> assertEquals(Collections.singletonList(STALE_ID), listener.config(namespaceBListKey)),
+                () -> assertEquals("stale-rule", listener.config(namespaceBDataKey)));
+    }
+
+    @Test
+    public void testNamespaceEmptyAppAuthRefreshRemovesStaleData() {
+        TestNodeDataChangedListener listener = new TestNodeDataChangedListener();
+        String namespaceAListKey = "namespace-a.auth.list";
+        String namespaceADataKey = "namespace-a.auth.stale-app-key";
+        String namespaceBListKey = "namespace-b.auth.list";
+        String namespaceBDataKey = "namespace-b.auth.stale-app-key";
+        listener.putConfig(namespaceAListKey, Collections.singletonList("stale-app-key"));
+        listener.putConfig(namespaceADataKey, "stale-auth");
+        listener.putConfig(namespaceBListKey, Collections.singletonList("stale-app-key"));
+        listener.putConfig(namespaceBDataKey, "stale-auth");
+
+        listener.onAppAuthChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a");
+
+        assertAll(
+                () -> assertNull(listener.config(namespaceADataKey)),
+                () -> assertEquals(Collections.emptyList(), listener.config(namespaceAListKey)),
+                () -> assertEquals(Collections.singletonList("stale-app-key"), listener.config(namespaceBListKey)),
+                () -> assertEquals("stale-auth", listener.config(namespaceBDataKey)));
+    }
+
+    @Test
+    public void testNamespaceEmptyPluginRefreshRemovesStaleData() {
+        TestNodeDataChangedListener listener = new TestNodeDataChangedListener();
+        String namespaceAListKey = "namespace-a.plugin.list";
+        String namespaceADataKey = "namespace-a.plugin.stale-plugin";
+        String namespaceBListKey = "namespace-b.plugin.list";
+        String namespaceBDataKey = "namespace-b.plugin.stale-plugin";
+        listener.putConfig(namespaceAListKey, Collections.singletonList("stale-plugin"));
+        listener.putConfig(namespaceADataKey, "stale-plugin");
+        listener.putConfig(namespaceBListKey, Collections.singletonList("stale-plugin"));
+        listener.putConfig(namespaceBDataKey, "stale-plugin");
+
+        listener.onPluginChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a");
+
+        assertAll(
+                () -> assertNull(listener.config(namespaceADataKey)),
+                () -> assertEquals(Collections.emptyList(), listener.config(namespaceAListKey)),
+                () -> assertEquals(Collections.singletonList("stale-plugin"), listener.config(namespaceBListKey)),
+                () -> assertEquals("stale-plugin", listener.config(namespaceBDataKey)));
+    }
+
+    @Test
+    public void testNamespaceEmptyRefreshPropagatesStorageFailures() {
+        TestNodeDataChangedListener commonListener = new TestNodeDataChangedListener();
+        String authDataKey = "namespace-a.auth.stale-app-key";
+        commonListener.putConfig("namespace-a.auth.list", Collections.singletonList("stale-app-key"));
+        commonListener.putConfig(authDataKey, "stale-auth");
+        commonListener.failOnDelete(authDataKey);
+        assertThrows(IllegalStateException.class,
+                () -> commonListener.onAppAuthChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a"));
+
+        TestNodeDataChangedListener selectorListener = new TestNodeDataChangedListener();
+        String selectorDataKey = "namespace-a.selector." + FIRST_PLUGIN + DefaultNodeConstants.JOIN_POINT + STALE_ID;
+        selectorListener.putConfig("namespace-a.plugin.list", Collections.singletonList(FIRST_PLUGIN));
+        selectorListener.putConfig(selectorListKeyForNamespace("namespace-a", FIRST_PLUGIN), Collections.singletonList(STALE_ID));
+        selectorListener.putConfig(selectorDataKey, "stale-selector");
+        selectorListener.failOnDelete(selectorDataKey);
+        assertThrows(IllegalStateException.class,
+                () -> selectorListener.onSelectorChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a"));
+
+        TestNodeDataChangedListener ruleListener = new TestNodeDataChangedListener();
+        String ruleListKey = "namespace-a.rule." + FIRST_PLUGIN + ".selector-id" + DefaultNodeConstants.POINT_LIST;
+        String ruleDataKey = "namespace-a.rule." + FIRST_PLUGIN + ".selector-id." + STALE_ID;
+        ruleListener.putConfig("namespace-a.plugin.list", Collections.singletonList(FIRST_PLUGIN));
+        ruleListener.putConfig(selectorListKeyForNamespace("namespace-a", FIRST_PLUGIN), Collections.singletonList("selector-id"));
+        ruleListener.putConfig(ruleListKey, Collections.singletonList(STALE_ID));
+        ruleListener.putConfig(ruleDataKey, "stale-rule");
+        ruleListener.failOnDelete(ruleDataKey);
+        assertThrows(IllegalStateException.class,
+                () -> ruleListener.onRuleChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a"));
     }
 
     @Test
@@ -114,8 +239,12 @@ public final class AbstractNodeDataChangedListenerTest {
     }
 
     private static SelectorData selectorData(final String pluginName, final String selectorId) {
+        return selectorData(NAMESPACE_ID, pluginName, selectorId);
+    }
+
+    private static SelectorData selectorData(final String namespaceId, final String pluginName, final String selectorId) {
         return SelectorData.builder()
-                .namespaceId(NAMESPACE_ID)
+                .namespaceId(namespaceId)
                 .pluginName(pluginName)
                 .id(selectorId)
                 .build();
@@ -129,11 +258,17 @@ public final class AbstractNodeDataChangedListenerTest {
         return NAMESPACE_ID + ".selector." + pluginName + DefaultNodeConstants.JOIN_POINT + selectorId;
     }
 
+    private static String selectorListKeyForNamespace(final String namespaceId, final String pluginName) {
+        return namespaceId + ".selector." + pluginName + DefaultNodeConstants.POINT_LIST;
+    }
+
     private static final class TestNodeDataChangedListener extends AbstractNodeDataChangedListener {
 
         private final Map<String, Object> configs = new HashMap<>();
 
         private final Set<String> deletedDataIds = new HashSet<>();
+
+        private String failedDataId;
 
         private TestNodeDataChangedListener() {
             super(new ChangeData("plugin", "selector", "rule", "auth", "meta", "proxy.selector", "discovery"));
@@ -146,6 +281,9 @@ public final class AbstractNodeDataChangedListenerTest {
 
         @Override
         protected void doDelConfig(final String dataId) {
+            if (dataId.equals(failedDataId)) {
+                throw new IllegalStateException("test storage failure");
+            }
             configs.remove(dataId);
             deletedDataIds.add(dataId);
         }
@@ -159,6 +297,10 @@ public final class AbstractNodeDataChangedListenerTest {
 
         private void putConfig(final String dataId, final Object data) {
             configs.put(dataId, data);
+        }
+
+        private void failOnDelete(final String dataId) {
+            failedDataId = dataId;
         }
 
         private Object config(final String dataId) {

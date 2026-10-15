@@ -17,14 +17,20 @@
 
 package org.apache.shenyu.admin.listener;
 
+import org.apache.shenyu.common.constant.DefaultPathConstants;
 import org.apache.shenyu.common.dto.DiscoverySyncData;
 import org.apache.shenyu.common.enums.DataEventTypeEnum;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class AbstractPathDataChangedListenerTest {
 
@@ -92,7 +98,69 @@ public final class AbstractPathDataChangedListenerTest {
         assertEquals("/default/shenyu/discoveryUpstream/divide/selector-id", listener.deletedPath);
     }
 
+    @Test
+    public void testNamespaceEmptySelectorRefreshRemovesStaleData() {
+        TestPathDataChangedListener listener = new TestPathDataChangedListener();
+        String namespaceAPath = DefaultPathConstants.buildSelectorRealPath("namespace-a", "divide", "stale");
+        String namespaceBPath = DefaultPathConstants.buildSelectorRealPath("namespace-b", "divide", "stale");
+        listener.seedPath(namespaceAPath);
+        listener.seedPath(namespaceBPath);
+
+        listener.onSelectorChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a");
+
+        assertAll(
+                () -> assertFalse(listener.hasPath(namespaceAPath)),
+                () -> assertTrue(listener.hasPath(namespaceBPath)));
+    }
+
+    @Test
+    public void testNamespaceEmptyRuleRefreshRemovesStaleData() {
+        TestPathDataChangedListener listener = new TestPathDataChangedListener();
+        String namespaceAPath = DefaultPathConstants.buildRulePath("namespace-a", "divide", "selector-id", "stale");
+        String namespaceBPath = DefaultPathConstants.buildRulePath("namespace-b", "divide", "selector-id", "stale");
+        listener.seedPath(namespaceAPath);
+        listener.seedPath(namespaceBPath);
+
+        listener.onRuleChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a");
+
+        assertAll(
+                () -> assertFalse(listener.hasPath(namespaceAPath)),
+                () -> assertTrue(listener.hasPath(namespaceBPath)));
+    }
+
+    @Test
+    public void testNamespaceEmptyAppAuthRefreshRemovesStaleData() {
+        TestPathDataChangedListener listener = new TestPathDataChangedListener();
+        String namespaceAPath = DefaultPathConstants.buildAppAuthPath("namespace-a", "stale-app-key");
+        String namespaceBPath = DefaultPathConstants.buildAppAuthPath("namespace-b", "stale-app-key");
+        listener.seedPath(namespaceAPath);
+        listener.seedPath(namespaceBPath);
+
+        listener.onAppAuthChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a");
+
+        assertAll(
+                () -> assertFalse(listener.hasPath(namespaceAPath)),
+                () -> assertTrue(listener.hasPath(namespaceBPath)));
+    }
+
+    @Test
+    public void testNamespaceEmptyPluginRefreshRemovesStaleData() {
+        TestPathDataChangedListener listener = new TestPathDataChangedListener();
+        String namespaceAPath = DefaultPathConstants.buildPluginPath("namespace-a", "divide");
+        String namespaceBPath = DefaultPathConstants.buildPluginPath("namespace-b", "divide");
+        listener.seedPath(namespaceAPath);
+        listener.seedPath(namespaceBPath);
+
+        listener.onPluginChanged(Collections.emptyList(), DataEventTypeEnum.REFRESH, "namespace-a");
+
+        assertAll(
+                () -> assertFalse(listener.hasPath(namespaceAPath)),
+                () -> assertTrue(listener.hasPath(namespaceBPath)));
+    }
+
     private static final class TestPathDataChangedListener extends AbstractPathDataChangedListener {
+
+        private final Set<String> paths = new HashSet<>();
 
         private String deletedPath;
 
@@ -106,10 +174,20 @@ public final class AbstractPathDataChangedListenerTest {
         @Override
         public void deleteNode(final String pluginPath) {
             deletedPath = pluginPath;
+            paths.remove(pluginPath);
         }
 
         @Override
-        public void deletePathRecursive(final String selectorParentPath) {
+        public void deletePathRecursive(final String path) {
+            paths.removeIf(currentPath -> currentPath.equals(path) || currentPath.startsWith(path + "/"));
+        }
+
+        private void seedPath(final String path) {
+            paths.add(path);
+        }
+
+        private boolean hasPath(final String path) {
+            return paths.contains(path);
         }
     }
 }

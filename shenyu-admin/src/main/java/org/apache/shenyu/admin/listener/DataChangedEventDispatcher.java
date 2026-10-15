@@ -17,11 +17,15 @@
 
 package org.apache.shenyu.admin.listener;
 
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.apache.shenyu.admin.config.properties.ClusterProperties;
 import org.apache.shenyu.admin.mode.cluster.service.ClusterSelectMasterService;
 import org.apache.shenyu.admin.service.manager.LoadServiceDocEntry;
+import org.apache.shenyu.common.enums.ConfigGroupEnum;
+import org.apache.shenyu.common.enums.DataEventTypeEnum;
+import org.apache.shenyu.common.exception.ShenyuException;
 import org.apache.shenyu.common.dto.AppAuthData;
 import org.apache.shenyu.common.dto.DiscoverySyncData;
 import org.apache.shenyu.common.dto.MetaData;
@@ -91,8 +95,9 @@ public class DataChangedEventDispatcher implements ApplicationListener<DataChang
     @SuppressWarnings("unchecked")
     private void dispatch(final DataChangedEvent event) {
         final boolean master = isMasterOrStandalone();
-        if (!master) {
-            forwardEventToMaster(event);
+        final boolean forwarded = master || forwardEventToMaster(event);
+        if (!forwarded && isNamespaceRefresh(event)) {
+            throw new ShenyuException("Failed to forward namespace refresh event to cluster master: " + event.getGroupKey());
         }
         for (DataChangedListener listener : listeners) {
             if (!master && !(listener instanceof AbstractDataChangedListener)) {
@@ -160,12 +165,12 @@ public class DataChangedEventDispatcher implements ApplicationListener<DataChang
         return shenyuClusterSelectMasterService.isMaster();
     }
 
-    private void forwardEventToMaster(final DataChangedEvent event) {
+    private boolean forwardEventToMaster(final DataChangedEvent event) {
         if (Objects.isNull(eventForwarder)) {
             LOG.warn("received DataChangedEvent, not master, no forwarder available, group={}, type={},"
                             + " push listeners will be skipped on this node",
                     event.getGroupKey(), event.getEventType());
-            return;
+            return false;
         }
         final boolean forwarded = eventForwarder.forward(event);
         if (forwarded) {
@@ -176,5 +181,16 @@ public class DataChangedEventDispatcher implements ApplicationListener<DataChang
                             + " push listeners will be skipped on this node",
                     event.getGroupKey(), event.getEventType());
         }
+        return forwarded;
+    }
+
+    private boolean isNamespaceRefresh(final DataChangedEvent event) {
+        if (event.getEventType() != DataEventTypeEnum.REFRESH || StringUtils.isBlank(event.getNamespaceId())) {
+            return false;
+        }
+        return event.getGroupKey() == ConfigGroupEnum.APP_AUTH
+                || event.getGroupKey() == ConfigGroupEnum.PLUGIN
+                || event.getGroupKey() == ConfigGroupEnum.SELECTOR
+                || event.getGroupKey() == ConfigGroupEnum.RULE;
     }
 }

@@ -156,6 +156,27 @@ public final class SyncDataServiceTest {
         });
     }
 
+    @Test
+    public void syncAllByNamespaceIdPublishesRefreshSnapshotsInCleanupOrderTest() {
+        String namespaceId = "namespace-id";
+        given(this.namespacePluginService.listAll(namespaceId)).willReturn(Collections.emptyList());
+        given(this.selectorService.listAllByNamespaceId(namespaceId)).willReturn(Collections.emptyList());
+        given(this.ruleService.listAllByNamespaceId(namespaceId)).willReturn(Collections.emptyList());
+
+        assertTrue(syncDataService.syncAllByNamespaceId(DataEventTypeEnum.REFRESH, namespaceId));
+
+        ArgumentCaptor<DataChangedEvent> eventCaptor = ArgumentCaptor.forClass(DataChangedEvent.class);
+        verify(eventPublisher, times(3)).publishEvent(eventCaptor.capture());
+        List<DataChangedEvent> events = eventCaptor.getAllValues();
+        assertEquals(ConfigGroupEnum.RULE, events.get(0).getGroupKey());
+        assertEquals(ConfigGroupEnum.SELECTOR, events.get(1).getGroupKey());
+        assertEquals(ConfigGroupEnum.PLUGIN, events.get(2).getGroupKey());
+        events.forEach(event -> {
+            assertEquals(namespaceId, event.getNamespaceId());
+            assertTrue(event.getSource().isEmpty());
+        });
+    }
+
 
     /**
      * build mock PluginData.

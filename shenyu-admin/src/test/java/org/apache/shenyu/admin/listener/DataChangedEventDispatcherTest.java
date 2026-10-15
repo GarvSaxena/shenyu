@@ -25,6 +25,8 @@ import org.apache.shenyu.admin.listener.zookeeper.ZookeeperDataChangedListener;
 import org.apache.shenyu.admin.mode.cluster.service.ClusterSelectMasterService;
 import org.apache.shenyu.admin.service.manager.LoadServiceDocEntry;
 import org.apache.shenyu.common.enums.ConfigGroupEnum;
+import org.apache.shenyu.common.enums.DataEventTypeEnum;
+import org.apache.shenyu.common.exception.ShenyuException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -358,6 +360,24 @@ public final class DataChangedEventDispatcherTest {
         verify(clusterDataChangedEventForwarder, times(1)).forward(dataChangedEvent);
         verify(httpLongPollingDataChangedListener, times(1)).onPluginChanged(anyList(), any(), any());
         verify(websocketDataChangedListener, never()).onPluginChanged(anyList(), any(), any());
+    }
+
+    @Test
+    void onApplicationEventNamespaceRefreshForwardFailureStopsDependentEventsTest() {
+        when(clusterProperties.isEnabled()).thenReturn(true);
+        when(shenyuClusterSelectMasterService.isMaster()).thenReturn(false);
+        when(clusterDataChangedEventForwarder.forward(any(DataChangedEvent.class))).thenReturn(false);
+        List<DataChangedEvent> refreshEvents = List.of(
+                new DataChangedEvent(ConfigGroupEnum.RULE, DataEventTypeEnum.REFRESH, Collections.emptyList(), "namespace-a"),
+                new DataChangedEvent(ConfigGroupEnum.SELECTOR, DataEventTypeEnum.REFRESH, Collections.emptyList(), "namespace-a"),
+                new DataChangedEvent(ConfigGroupEnum.PLUGIN, DataEventTypeEnum.REFRESH, Collections.emptyList(), "namespace-a"));
+
+        assertThrows(ShenyuException.class, () -> refreshEvents.forEach(dataChangedEventDispatcher::onApplicationEvent));
+
+        verify(clusterDataChangedEventForwarder, times(1)).forward(refreshEvents.get(0));
+        verify(clusterDataChangedEventForwarder, never()).forward(refreshEvents.get(1));
+        verify(clusterDataChangedEventForwarder, never()).forward(refreshEvents.get(2));
+        verify(httpLongPollingDataChangedListener, never()).onRuleChanged(anyList(), any(), any());
     }
 
     /**

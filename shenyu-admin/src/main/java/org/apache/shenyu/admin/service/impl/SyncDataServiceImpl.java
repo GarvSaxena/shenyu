@@ -146,15 +146,18 @@ public class SyncDataServiceImpl implements SyncDataService {
         appAuthService.syncDataByNamespaceId(namespaceId);
 
         List<PluginData> pluginDataList = namespacePluginService.listAll(namespaceId);
-
-        eventPublisher.publishEvent(new DataChangedEvent(ConfigGroupEnum.PLUGIN, type, pluginDataList, namespaceId));
-
         List<SelectorData> selectorDataList = selectorService.listAllByNamespaceId(namespaceId);
-        eventPublisher.publishEvent(
-                new DataChangedEvent(ConfigGroupEnum.SELECTOR, type, selectorDataList, namespaceId));
-
         List<RuleData> ruleDataList = ruleService.listAllByNamespaceId(namespaceId);
-        eventPublisher.publishEvent(new DataChangedEvent(ConfigGroupEnum.RULE, type, ruleDataList, namespaceId));
+
+        if (type == DataEventTypeEnum.REFRESH) {
+            eventPublisher.publishEvent(new DataChangedEvent(ConfigGroupEnum.RULE, type, ruleDataList, namespaceId));
+            eventPublisher.publishEvent(new DataChangedEvent(ConfigGroupEnum.SELECTOR, type, selectorDataList, namespaceId));
+            eventPublisher.publishEvent(new DataChangedEvent(ConfigGroupEnum.PLUGIN, type, pluginDataList, namespaceId));
+        } else {
+            eventPublisher.publishEvent(new DataChangedEvent(ConfigGroupEnum.PLUGIN, type, pluginDataList, namespaceId));
+            eventPublisher.publishEvent(new DataChangedEvent(ConfigGroupEnum.SELECTOR, type, selectorDataList, namespaceId));
+            eventPublisher.publishEvent(new DataChangedEvent(ConfigGroupEnum.RULE, type, ruleDataList, namespaceId));
+        }
 
         metaDataService.syncDataByNamespaceId(namespaceId);
         discoveryService.syncDataByNamespaceId(namespaceId);

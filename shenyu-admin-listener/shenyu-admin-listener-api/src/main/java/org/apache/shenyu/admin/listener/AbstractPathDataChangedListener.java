@@ -19,6 +19,7 @@ package org.apache.shenyu.admin.listener;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.shenyu.common.constant.Constants;
 import org.apache.shenyu.common.constant.DefaultPathConstants;
 import org.apache.shenyu.common.dto.AppAuthData;
 import org.apache.shenyu.common.dto.PluginData;
@@ -46,6 +47,13 @@ public abstract class AbstractPathDataChangedListener implements DataChangedList
     private final Object ruleSyncObject = new Object();
 
     private final Object selectorSyncObject = new Object();
+
+    @Override
+    public void onAppAuthChanged(final List<AppAuthData> changed, final DataEventTypeEnum eventType, final String namespaceId) {
+        if (!deleteEmptyNamespaceGroup(changed, eventType, namespaceId, DefaultPathConstants.APP_AUTH_PARENT)) {
+            onAppAuthChanged(changed, eventType);
+        }
+    }
 
     @Override
     public void onAppAuthChanged(final List<AppAuthData> changed, final DataEventTypeEnum eventType) {
@@ -143,6 +151,13 @@ public abstract class AbstractPathDataChangedListener implements DataChangedList
     }
 
     @Override
+    public void onSelectorChanged(final List<SelectorData> changed, final DataEventTypeEnum eventType, final String namespaceId) {
+        if (!deleteEmptyNamespaceGroup(changed, eventType, namespaceId, DefaultPathConstants.SELECTOR_PARENT)) {
+            onSelectorChanged(changed, eventType);
+        }
+    }
+
+    @Override
     public void onPluginChanged(final List<PluginData> changed, final DataEventTypeEnum eventType) {
         for (PluginData data : changed) {
             String pluginPath = DefaultPathConstants.buildPluginPath(data.getNamespaceId(), data.getName());
@@ -159,6 +174,13 @@ public abstract class AbstractPathDataChangedListener implements DataChangedList
             //create or update
             createOrUpdate(pluginPath, data);
             LOG.debug("[DataChangedListener] change path {} with data {}", pluginPath, data);
+        }
+    }
+
+    @Override
+    public void onPluginChanged(final List<PluginData> changed, final DataEventTypeEnum eventType, final String namespaceId) {
+        if (!deleteEmptyNamespaceGroup(changed, eventType, namespaceId, DefaultPathConstants.PLUGIN_PARENT)) {
+            onPluginChanged(changed, eventType);
         }
     }
 
@@ -185,6 +207,28 @@ public abstract class AbstractPathDataChangedListener implements DataChangedList
             }
             LOG.debug("[DataChangedListener] change path {} with data {}", ruleRealPath, data);
         }
+    }
+
+    @Override
+    public void onRuleChanged(final List<RuleData> changed, final DataEventTypeEnum eventType, final String namespaceId) {
+        if (!deleteEmptyNamespaceGroup(changed, eventType, namespaceId, DefaultPathConstants.RULE_PARENT)) {
+            onRuleChanged(changed, eventType);
+        }
+    }
+
+    private boolean deleteEmptyNamespaceGroup(final List<?> changed, final DataEventTypeEnum eventType,
+                                              final String namespaceId, final String groupPath) {
+        if (CollectionUtils.isNotEmpty(changed) || eventType != DataEventTypeEnum.REFRESH) {
+            return false;
+        }
+        if (StringUtils.isBlank(namespaceId)) {
+            LOG.warn("[DataChangedListener] ignore empty refresh without namespace for {}", groupPath);
+            return true;
+        }
+        final String namespaceGroupPath = DefaultPathConstants.handlePathData(
+                String.join(Constants.PATH_SEPARATOR, Constants.PATH_SEPARATOR + namespaceId, groupPath));
+        deletePathRecursive(namespaceGroupPath);
+        return true;
     }
 
     /**
